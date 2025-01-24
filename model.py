@@ -65,11 +65,47 @@ def apply_rotary_embeddings(x: torch.Tensor, freqs_complex: torch.Tensor, device
 class RMSNorm(nn.Module):
 
     def __init__(self,dim:int,eps:float = 1e-6):
-        super().__init()
+        super().__init__()
+        self.dim = dim
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
 
-    def _norm
+    def _norm(self,x:torch.Tensor):
+        #rsqrt = 1 / (sqrt)
+        return x *  torch.rsqrt(x.pow(2).mean(-1,keepdim=True) + self.eps)
+
+    def forward(self,x):
+        output = self._norm(x.float().type_as(x))
+        return self.weight * output
+
+
+class EncoderBlock(nn.Module):
+    
+    def __init__(self,args:ModelArgs):
+        super().__init__()
+
+        self.n_heads = args.n_heads
+        self.dim = args.dim
+        self.head_dim = args.dim // args.n_heads
+
+        self.attention = SelfAttention(args)
+        self.feed_forward = Feedforward(args)
+
+        self.attention_norm = RMSNorm(args.dim,eps=args.norm_eps)
+        self.ffn_norm = RMSNorm(args.dim,eps=args.norm_eps)
+
+    def forward(self,x:torch.Tensor,start_pos:int,freqs_complex:torch.Tensor):
+
+        h = x + self.attention.forward(self.attention_norm(x),start_pos,freqs_complex)
+        out = h + self.feed_forward.forward(self.ffn_norm(h))
+        return out
+    
+    
+    
+
+
+
+
 
 
 

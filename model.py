@@ -78,6 +78,14 @@ class RMSNorm(nn.Module):
         output = self._norm(x.float().type_as(x))
         return self.weight * output
 
+def repeat_kv(x:torch.Tensor,n_rep:int):
+
+    bs,slen,n_kv_heads,head_dim = x.shape
+    if n_rep == 1:
+        return x
+    return(
+        x[:,:,:,None,:].expand(bs,slen,n_kv_heads,n_rep,head_dim).reshape(bs,slen,n_kv_heads*n_rep,head_dim)
+    )
 
 class SelfAttention(nn.Module):
 
@@ -141,6 +149,30 @@ class SelfAttention(nn.Module):
         return self.wo(output)
 
 
+class Feedforward(nn.Module):
+
+    def __init__(self,args:ModelArgs):
+        super().__init__()
+
+        hidden_dim = 4 *  args.dim
+        hidden_dim = int(2 * hidden_dim / 3)
+        if args.ffn_dim_multipler is not None:
+            hidden_dim = int(args.ffn_dim_multipler * hidden_dim)
+
+        hidden_dim = args.multiple_of * ((hidden_dim + args.multiple_of - 1) // args.multiple_of)
+
+        self.w1 = nn.Linear(args.dim,hidden_dim,bias=False)
+        self.w2 = nn.Linear(hidden_dim,args.dim,bias=False)
+        self.w3 = nn.Linear(args.dim,hidden_dim,bias=False)
+
+    def forward(self,x:torch.Tensor):
+
+        swish = F.silu(self.w1(x))
+        x_v = self.w3(x)
+        x = swish * x_v
+        x = self.w2(x)
+        return x
+    
 
 
 class EncoderBlock(nn.Module):
@@ -164,13 +196,6 @@ class EncoderBlock(nn.Module):
         out = h + self.feed_forward.forward(self.ffn_norm(h))
         return out
     
-
-    
-
-
-
-
-
 
 
 class Transformer(nn.Module):
